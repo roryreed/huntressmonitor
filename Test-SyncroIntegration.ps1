@@ -68,11 +68,6 @@ if ($TestScenario -eq "Installed") {
     Write-Host '.\Check-HuntressHealth.ps1 -AlertSyncro -Verbose' -ForegroundColor White
     Write-Host ""
     
-    # Cleanup
-    Write-Host "Cleaning up mock files..." -ForegroundColor Yellow
-    if (Test-Path $mockSyncroDir) {
-        Remove-Item -Path $mockSyncroDir -Recurse -Force
-    }
     
 } else {
     Write-Host "Test Scenario: Syncro Client NOT Installed" -ForegroundColor Yellow
