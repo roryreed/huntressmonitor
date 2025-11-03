@@ -81,12 +81,9 @@ function Test-SyncroInstalled {
     #>
     
     $syncroLocations = @(
-        # Modern Syncro installation path
+        # Modern Syncro installation path - kabuto.exe is the primary CLI tool
         "${env:ProgramFiles}\RepairTech\Syncro\kabuto.exe",
         "${env:ProgramFiles(x86)}\RepairTech\Syncro\kabuto.exe",
-        # Alternative Syncro service runner
-        "${env:ProgramFiles}\RepairTech\Syncro\Syncro.Service.Runner.exe",
-        "${env:ProgramFiles(x86)}\RepairTech\Syncro\Syncro.Service.Runner.exe",
         # Older installation paths
         "${env:ProgramData}\Syncro\kabuto.exe",
         "${env:ProgramData}\RepairTech\Syncro\kabuto.exe"
@@ -163,15 +160,29 @@ function Send-SyncroAlert {
             $fieldName = $field.Key
             $fieldValue = $field.Value
             
-            Write-Verbose "Setting Syncro field: $fieldName = $fieldValue"
+            # Validate field name to prevent injection (alphanumeric, underscore, hyphen only)
+            if ($fieldName -notmatch '^[a-zA-Z0-9_-]+$') {
+                Write-Warning "Skipping invalid field name: $fieldName"
+                continue
+            }
+            
+            # Sanitize field value (remove potentially dangerous characters)
+            $safeFieldValue = $fieldValue -replace '["`$]', ''
+            
+            Write-Verbose "Setting Syncro field: $fieldName = $safeFieldValue"
             
             # Use Syncro's asset field setting capability
-            # The kabuto.exe tool supports setting custom fields via command line
-            $arguments = "asset_field set `"$fieldName`" `"$fieldValue`""
+            # Build arguments array for safe parameter passing
+            $arguments = @(
+                "asset_field",
+                "set",
+                $fieldName,
+                $safeFieldValue
+            )
             
             $processInfo = New-Object System.Diagnostics.ProcessStartInfo
             $processInfo.FileName = $SyncroPath
-            $processInfo.Arguments = $arguments
+            $processInfo.Arguments = ($arguments | ForEach-Object { "`"$_`"" }) -join ' '
             $processInfo.UseShellExecute = $false
             $processInfo.RedirectStandardOutput = $true
             $processInfo.RedirectStandardError = $true
@@ -181,16 +192,22 @@ function Send-SyncroAlert {
             $process.StartInfo = $processInfo
             
             [void]$process.Start()
-            $output = $process.StandardOutput.ReadToEnd()
-            $error = $process.StandardError.ReadToEnd()
+            
+            # Read output asynchronously to prevent deadlock
+            $output = $process.StandardOutput.ReadToEndAsync()
+            $errorOutput = $process.StandardError.ReadToEndAsync()
+            
             $process.WaitForExit()
+            
+            $outputText = $output.Result
+            $errorText = $errorOutput.Result
             
             if ($process.ExitCode -eq 0) {
                 Write-Verbose "Successfully set field: $fieldName"
             } else {
                 Write-Warning "Failed to set field $fieldName. Exit code: $($process.ExitCode)"
-                if ($error) {
-                    Write-Verbose "Error details: $error"
+                if ($errorText) {
+                    Write-Verbose "Error details: $errorText"
                 }
             }
         }

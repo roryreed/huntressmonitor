@@ -29,43 +29,14 @@ if ($TestScenario -eq "Installed") {
     Write-Host "Test Scenario: Syncro Client Installed" -ForegroundColor Green
     Write-Host ""
     
-    # Create a mock Syncro directory and executable
-    $mockSyncroDir = "$PSScriptRoot\mock_syncro_test"
-    $mockSyncroExe = Join-Path $mockSyncroDir "kabuto.exe"
-    
-    if (-not (Test-Path $mockSyncroDir)) {
-        New-Item -ItemType Directory -Path $mockSyncroDir -Force | Out-Null
-    }
-    
-    # Create a mock PowerShell script that simulates kabuto.exe
-    $mockScript = @'
-# Mock Syncro kabuto.exe
-param([string]$Command, [string]$FieldName, [string]$FieldValue)
-
-$logFile = Join-Path $PSScriptRoot "syncro_fields.log"
-
-$timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-$logEntry = "$timestamp - Command: $Command, Field: $FieldName, Value: $FieldValue"
-
-Add-Content -Path $logFile -Value $logEntry
-
-Write-Output "Successfully set custom field: $FieldName"
-exit 0
-'@
-    
-    Set-Content -Path $mockSyncroExe -Value $mockScript
-    
-    Write-Host "Mock Syncro client created at: $mockSyncroExe" -ForegroundColor Yellow
-    Write-Host ""
-    
-    # Temporarily modify the environment to use the mock
     Write-Host "Demonstrating Syncro Integration:" -ForegroundColor Cyan
     Write-Host "-----------------------------------" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "In a real environment, the script would:" -ForegroundColor Yellow
-    Write-Host "1. Detect Syncro client at standard locations" -ForegroundColor Yellow
+    Write-Host "1. Detect Syncro client (kabuto.exe) at standard locations" -ForegroundColor Yellow
     Write-Host "2. Query Huntress health API" -ForegroundColor Yellow
     Write-Host "3. Send health data to Syncro using custom asset fields" -ForegroundColor Yellow
+    Write-Host "4. Use kabuto.exe CLI to set each field" -ForegroundColor Yellow
     Write-Host ""
     
     Write-Host "Example Syncro custom fields that would be set:" -ForegroundColor Cyan
