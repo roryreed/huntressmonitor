@@ -24,7 +24,11 @@ Write-Host "`nIn a real environment with Huntress installed, the script would qu
 Write-Host "  http://localhost:24799/health" -ForegroundColor Yellow
 Write-Host "`nExpected response format:" -ForegroundColor Yellow
 
-# Create a sample response
+# Create a sample response with example timestamps
+$currentDate = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
+$recentDate = (Get-Date).AddHours(-13).ToString("yyyy-MM-ddTHH:mm:ssZ")
+$olderDate = (Get-Date).AddHours(-3).ToString("yyyy-MM-ddTHH:mm:ssZ")
+
 $mockResponse = @{
     status = $MockStatus
     message = if ($MockStatus -eq "Healthy") { "All systems operational" } 
@@ -39,12 +43,12 @@ $mockResponse = @{
         Updater = "1.0.1"
     }
     timestamps = @{
-        LastError = "2025-11-02T10:00:00Z"
-        LastEvent = "2025-11-02T23:55:00Z"
-        LastSurvey = "2025-11-02T20:00:00Z"
+        LastError = $recentDate
+        LastEvent = $currentDate
+        LastSurvey = $olderDate
     }
     connectivity = @{
-        LastConnected = "2025-11-02T23:55:00Z"
+        LastConnected = $currentDate
         Status = "Connected"
     }
 }

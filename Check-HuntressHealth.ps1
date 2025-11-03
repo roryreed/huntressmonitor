@@ -51,7 +51,7 @@ try {
     if ($Json) {
         # Return raw JSON response
         $response | ConvertTo-Json -Depth 10
-        return
+        exit 0
     }
     
     # Display health status with color coding
