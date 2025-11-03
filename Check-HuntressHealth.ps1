@@ -42,24 +42,6 @@ param(
 # Health endpoint URL
 $healthEndpoint = "http://localhost:24799/health"
 
-# ANSI color codes for output (if supported)
-function Write-ColorOutput {
-    param(
-        [string]$Message,
-        [string]$Color = "White"
-    )
-    
-    $colorMap = @{
-        "Green" = "Green"
-        "Red" = "Red"
-        "Yellow" = "Yellow"
-        "White" = "White"
-        "Cyan" = "Cyan"
-    }
-    
-    Write-Host $Message -ForegroundColor $colorMap[$Color]
-}
-
 try {
     Write-Verbose "Querying Huntress health endpoint at $healthEndpoint"
     
@@ -85,7 +67,7 @@ try {
     }
     
     Write-Host "`nOverall Status: " -NoNewline
-    Write-ColorOutput $status $statusColor
+    Write-Host $status -ForegroundColor $statusColor
     
     if ($response.message) {
         Write-Host "Message: $($response.message)"
@@ -98,7 +80,7 @@ try {
             $response.serviceStates.PSObject.Properties | ForEach-Object {
                 $serviceStatus = if ($_.Value -eq "Running") { "Green" } else { "Red" }
                 Write-Host "  $($_.Name): " -NoNewline
-                Write-ColorOutput $_.Value $serviceStatus
+                Write-Host $_.Value -ForegroundColor $serviceStatus
             }
         }
         
