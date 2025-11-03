@@ -14,6 +14,7 @@ This repository contains a PowerShell script that queries the Huntress agent's l
 - **Detailed Information**: Optional verbose mode shows service states, versions, timestamps, and connectivity information
 - **Error Handling**: Gracefully handles cases where the agent is not installed or not running
 - **Exit Codes**: Returns appropriate exit codes for automation and monitoring systems
+- **Syncro Integration**: Send alerts to Syncro RMM client software using custom asset fields (NEW)
 
 ## Prerequisites
 
@@ -49,6 +50,30 @@ This displays detailed information including:
 ```
 
 This returns the raw JSON response from the health API, useful for integration with other systems.
+
+### Syncro Integration
+
+```powershell
+.\Check-HuntressHealth.ps1 -AlertSyncro
+```
+
+Checks Huntress health and sends alert data to Syncro client software. Requires Syncro client to be installed on the system.
+
+**Custom Field Prefix:**
+
+```powershell
+.\Check-HuntressHealth.ps1 -AlertSyncro -SyncroFieldPrefix "hnt_"
+```
+
+Uses a custom prefix for Syncro custom field names (default is "huntress_").
+
+**Combined with Verbose:**
+
+```powershell
+.\Check-HuntressHealth.ps1 -AlertSyncro -Verbose
+```
+
+Displays detailed health information and sends data to Syncro with verbose logging.
 
 ## Exit Codes
 
@@ -108,6 +133,117 @@ if ($LASTEXITCODE -ne 0) {
     Write-EventLog -LogName Application -Source "HuntressMonitor" -EventId 1001 -Message "Huntress agent health check failed with exit code: $LASTEXITCODE"
 }
 ```
+
+## Syncro RMM Integration
+
+HuntressMonitor can send alert data to Syncro RMM client software installed on the same computer. This integration uses Syncro's custom asset fields to store and track Huntress agent health information.
+
+### Prerequisites
+
+- Syncro client software must be installed on the system
+- Syncro is typically installed at: `C:\Program Files\RepairTech\Syncro\`
+- The Syncro client executable (`kabuto.exe`) must be accessible
+
+### How It Works
+
+When the `-AlertSyncro` parameter is used:
+
+1. **Detection**: The script automatically detects if Syncro client is installed
+2. **Data Collection**: Huntress health data is collected from the health API
+3. **Field Mapping**: Health data is mapped to Syncro custom asset fields
+4. **Transmission**: Data is sent to Syncro using the Syncro CLI interface
+
+### Syncro Custom Fields
+
+The following custom asset fields are created/updated in Syncro (with default prefix `huntress_`):
+
+| Field Name | Description | Example Value |
+|------------|-------------|---------------|
+| `huntress_status` | Current health status | Healthy, Degraded, or Unhealthy |
+| `huntress_last_check` | Timestamp of last check | 2025-11-03 00:15:30 |
+| `huntress_message` | Status message | All systems operational |
+| `huntress_agent_version` | Huntress agent version | 1.2.3 |
+| `huntress_services` | Service states | HuntressAgent:Running, HuntressUpdater:Running |
+
+### Configuration Options
+
+#### Default Prefix
+
+```powershell
+.\Check-HuntressHealth.ps1 -AlertSyncro
+```
+
+Uses the default prefix `huntress_` for all custom fields.
+
+#### Custom Prefix
+
+```powershell
+.\Check-HuntressHealth.ps1 -AlertSyncro -SyncroFieldPrefix "hnt_"
+```
+
+Uses a custom prefix (e.g., `hnt_`) for field names. This creates fields like `hnt_status`, `hnt_last_check`, etc.
+
+### Scheduled Monitoring with Syncro
+
+You can create a scheduled task to run the health check and update Syncro automatically:
+
+```powershell
+# Run every 15 minutes and update Syncro
+.\Check-HuntressHealth.ps1 -AlertSyncro
+
+# With verbose logging
+.\Check-HuntressHealth.ps1 -AlertSyncro -Verbose
+```
+
+### Syncro Alerting
+
+Once the custom fields are populated in Syncro, you can:
+
+- Create Syncro alerts based on the `huntress_status` field
+- Monitor trends using the `huntress_last_check` timestamp
+- Track agent version updates via `huntress_agent_version`
+- View service states in the Syncro dashboard
+
+Example Syncro alert configuration:
+- **Condition**: `huntress_status` equals "Degraded" or "Unhealthy"
+- **Action**: Create ticket or send notification
+- **Frequency**: Check every 15 minutes
+
+### Security Considerations
+
+- **Local Communication**: Data is sent only to the local Syncro client (no network transmission to external servers)
+- **Official Interface**: Uses Syncro's official CLI interface (`kabuto.exe`)
+- **Limited Data**: Only health status data is transmitted (no sensitive credentials or keys)
+- **Authenticated**: Requires Syncro client to be installed and authenticated
+
+### Troubleshooting
+
+#### Syncro Not Found
+
+If you see: `WARNING: Syncro client not found`
+
+- Verify Syncro client is installed: Check `C:\Program Files\RepairTech\Syncro\`
+- Ensure `kabuto.exe` exists in the Syncro directory
+- Try reinstalling Syncro client if necessary
+
+#### Field Update Failures
+
+If custom fields fail to update:
+
+- Run with `-Verbose` flag to see detailed error messages
+- Check Syncro client service is running
+- Verify Syncro client is properly authenticated
+- Review Syncro logs for additional details
+
+### Testing
+
+Use the included test script to verify Syncro integration:
+
+```powershell
+.\Test-SyncroIntegration.ps1 -TestScenario "Installed"
+```
+
+This demonstrates how the integration works and what data is sent to Syncro.
 
 ## License
 

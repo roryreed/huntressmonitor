@@ -14,6 +14,14 @@
 .PARAMETER Json
     Returns the raw JSON response from the health endpoint.
 
+.PARAMETER AlertSyncro
+    Sends alert information to Syncro client software using Syncro custom asset fields.
+    Requires Syncro client to be installed on the system.
+
+.PARAMETER SyncroFieldPrefix
+    Prefix to use for Syncro custom field names. Default is "huntress_".
+    For example, with default prefix, the status field will be "huntress_status".
+
 .EXAMPLE
     .\Check-HuntressHealth.ps1
     Displays the basic health status of the Huntress agent.
@@ -26,21 +34,179 @@
     .\Check-HuntressHealth.ps1 -Json
     Returns the raw JSON response from the health API.
 
+.EXAMPLE
+    .\Check-HuntressHealth.ps1 -AlertSyncro
+    Checks Huntress health and sends alert data to Syncro client.
+
+.EXAMPLE
+    .\Check-HuntressHealth.ps1 -AlertSyncro -SyncroFieldPrefix "huntress_agent_"
+    Checks Huntress health and sends data to Syncro with custom field prefix.
+
 .NOTES
     Author: Huntress Monitor
-    Version: 1.0
+    Version: 2.0
     The Huntress agent must be installed and running for this script to work.
     The health endpoint is available at: http://localhost:24799/health
+    
+    Syncro Integration:
+    - Syncro client must be installed for -AlertSyncro to work
+    - Custom asset fields will be created/updated with Huntress health data
+    - Fields created: <prefix>status, <prefix>last_check, <prefix>agent_version
 #>
 
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$false)]
-    [switch]$Json
+    [switch]$Json,
+    
+    [Parameter(Mandatory=$false)]
+    [switch]$AlertSyncro,
+    
+    [Parameter(Mandatory=$false)]
+    [string]$SyncroFieldPrefix = "huntress_"
 )
 
 # Health endpoint URL
 $healthEndpoint = "http://localhost:24799/health"
+
+# Function to detect Syncro client installation
+function Test-SyncroInstalled {
+    <#
+    .SYNOPSIS
+        Checks if Syncro client is installed on the system.
+    
+    .DESCRIPTION
+        Looks for Syncro client executable in common installation paths.
+        Returns the path to the Syncro executable if found, otherwise returns $null.
+    #>
+    
+    $syncroLocations = @(
+        # Modern Syncro installation path
+        "${env:ProgramFiles}\RepairTech\Syncro\kabuto.exe",
+        "${env:ProgramFiles(x86)}\RepairTech\Syncro\kabuto.exe",
+        # Alternative Syncro service runner
+        "${env:ProgramFiles}\RepairTech\Syncro\Syncro.Service.Runner.exe",
+        "${env:ProgramFiles(x86)}\RepairTech\Syncro\Syncro.Service.Runner.exe",
+        # Older installation paths
+        "${env:ProgramData}\Syncro\kabuto.exe",
+        "${env:ProgramData}\RepairTech\Syncro\kabuto.exe"
+    )
+    
+    foreach ($location in $syncroLocations) {
+        if (Test-Path $location) {
+            Write-Verbose "Found Syncro client at: $location"
+            return $location
+        }
+    }
+    
+    Write-Verbose "Syncro client not found in standard locations"
+    return $null
+}
+
+# Function to send alert to Syncro
+function Send-SyncroAlert {
+    <#
+    .SYNOPSIS
+        Sends alert information to Syncro client using custom asset fields.
+    
+    .DESCRIPTION
+        Uses the Syncro client executable to set custom asset fields with
+        Huntress health information.
+    
+    .PARAMETER SyncroPath
+        Path to the Syncro executable.
+    
+    .PARAMETER HealthData
+        Health data object from Huntress API response.
+    
+    .PARAMETER FieldPrefix
+        Prefix for Syncro custom field names.
+    #>
+    
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$SyncroPath,
+        
+        [Parameter(Mandatory=$true)]
+        [PSCustomObject]$HealthData,
+        
+        [Parameter(Mandatory=$false)]
+        [string]$FieldPrefix = "huntress_"
+    )
+    
+    try {
+        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        
+        # Prepare the data to send to Syncro
+        $syncroFields = @{
+            "${FieldPrefix}status" = $HealthData.status
+            "${FieldPrefix}last_check" = $timestamp
+            "${FieldPrefix}message" = $HealthData.message
+        }
+        
+        # Add agent version if available
+        if ($HealthData.versions -and $HealthData.versions.Agent) {
+            $syncroFields["${FieldPrefix}agent_version"] = $HealthData.versions.Agent
+        }
+        
+        # Add service states if available
+        if ($HealthData.serviceStates) {
+            $serviceStatesStr = ($HealthData.serviceStates.PSObject.Properties | 
+                ForEach-Object { "$($_.Name):$($_.Value)" }) -join ", "
+            $syncroFields["${FieldPrefix}services"] = $serviceStatesStr
+        }
+        
+        Write-Verbose "Sending alert data to Syncro..."
+        
+        # Set each custom field using Syncro's CLI
+        foreach ($field in $syncroFields.GetEnumerator()) {
+            $fieldName = $field.Key
+            $fieldValue = $field.Value
+            
+            Write-Verbose "Setting Syncro field: $fieldName = $fieldValue"
+            
+            # Use Syncro's asset field setting capability
+            # The kabuto.exe tool supports setting custom fields via command line
+            $arguments = "asset_field set `"$fieldName`" `"$fieldValue`""
+            
+            $processInfo = New-Object System.Diagnostics.ProcessStartInfo
+            $processInfo.FileName = $SyncroPath
+            $processInfo.Arguments = $arguments
+            $processInfo.UseShellExecute = $false
+            $processInfo.RedirectStandardOutput = $true
+            $processInfo.RedirectStandardError = $true
+            $processInfo.CreateNoWindow = $true
+            
+            $process = New-Object System.Diagnostics.Process
+            $process.StartInfo = $processInfo
+            
+            [void]$process.Start()
+            $output = $process.StandardOutput.ReadToEnd()
+            $error = $process.StandardError.ReadToEnd()
+            $process.WaitForExit()
+            
+            if ($process.ExitCode -eq 0) {
+                Write-Verbose "Successfully set field: $fieldName"
+            } else {
+                Write-Warning "Failed to set field $fieldName. Exit code: $($process.ExitCode)"
+                if ($error) {
+                    Write-Verbose "Error details: $error"
+                }
+            }
+        }
+        
+        Write-Host "`nSyncro Alert: Data sent to Syncro client" -ForegroundColor Green
+        Write-Host "Fields updated with prefix: $FieldPrefix" -ForegroundColor Green
+        
+        return $true
+        
+    } catch {
+        Write-Warning "Failed to send alert to Syncro: $($_.Exception.Message)"
+        Write-Verbose "Error details: $($_.Exception)"
+        return $false
+    }
+}
+
 
 try {
     Write-Verbose "Querying Huntress health endpoint at $healthEndpoint"
@@ -107,6 +273,24 @@ try {
     }
     
     Write-Host "`n" -NoNewline
+    
+    # Send alert to Syncro if requested
+    if ($AlertSyncro) {
+        Write-Verbose "Syncro alert requested, checking for Syncro installation..."
+        $syncroPath = Test-SyncroInstalled
+        
+        if ($syncroPath) {
+            Write-Verbose "Syncro client found, sending alert data..."
+            $syncroSuccess = Send-SyncroAlert -SyncroPath $syncroPath -HealthData $response -FieldPrefix $SyncroFieldPrefix
+            
+            if (-not $syncroSuccess) {
+                Write-Warning "Failed to send complete alert data to Syncro"
+            }
+        } else {
+            Write-Warning "Syncro client not found. Install Syncro client to enable alert functionality."
+            Write-Host "Syncro is typically installed at: C:\Program Files\RepairTech\Syncro\" -ForegroundColor Yellow
+        }
+    }
     
     # Set exit code based on status
     switch ($status) {
